@@ -1,0 +1,211 @@
+diff -ru a/planegcs/Constraints.cpp b/planegcs/Constraints.cpp
+--- a/planegcs/Constraints.cpp	2026-11-01 17:27:50
++++ b/planegcs/Constraints.cpp	2026-11-01 17:36:05
+@@ -20,6 +20,10 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <cmath>  // KoykStudio: FreeCAD provides these through its precompiled header
++#include <map>
++#include <vector>
++
+ #ifdef _MSC_VER
+ # pragma warning(disable : 4251)
+ #endif
+@@ -33,7 +37,8 @@
+ # include <cassert>
+ #endif
+ 
+-#include <boost/graph/graph_concepts.hpp>
++
++#include <cassert>  // KoykStudio: FreeCAD provides it through its precompiled header
+ 
+ #include "Constraints.h"
+ 
+diff -ru a/planegcs/Constraints.h b/planegcs/Constraints.h
+--- a/planegcs/Constraints.h	2026-11-01 17:27:50
++++ b/planegcs/Constraints.h	2026-11-01 17:27:50
+@@ -23,7 +23,7 @@
+ #ifndef PLANEGCS_CONSTRAINTS_H
+ #define PLANEGCS_CONSTRAINTS_H
+ 
+-#include "../../SketcherGlobal.h"
++#include "SketcherGlobal.h"
+ #include "Geo.h"
+ 
+ // This enables debugging code intended to extract information to file bug reports against Eigen,
+diff -ru a/planegcs/GCS.cpp b/planegcs/GCS.cpp
+--- a/planegcs/GCS.cpp	2026-11-01 17:27:50
++++ b/planegcs/GCS.cpp	2026-11-01 17:36:05
+@@ -20,6 +20,10 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <cmath>  // KoykStudio: FreeCAD provides these through its precompiled header
++#include <map>
++#include <vector>
++
+ #ifdef _MSC_VER
+ # pragma warning(disable : 4251)
+ # pragma warning(disable : 4244)
+@@ -98,8 +102,53 @@
+ #include <Base/Console.h>
+ #include <FCConfig.h>
+ 
+-#include <boost/graph/connected_components.hpp>
+-#include <boost_graph_adjacency_list.hpp>
++// KoykStudio: Boost.Graph replaced by a small union-find with the same component numbering (components are
++// numbered in the order of their lowest vertex, as boost::connected_components numbers them).
++namespace koyk_graph
++{
++struct Graph
++{
++    std::vector<int> parent;
++};
++inline int add_vertex(Graph& g)
++{
++    g.parent.push_back(int(g.parent.size()));
++    return int(g.parent.size()) - 1;
++}
++inline int find(Graph& g, int v)
++{
++    while (g.parent[v] != v) {
++        g.parent[v] = g.parent[g.parent[v]];
++        v = g.parent[v];
++    }
++    return v;
++}
++inline void add_edge(int a, int b, Graph& g)
++{
++    a = find(g, a);
++    b = find(g, b);
++    if (a != b) {
++        g.parent[a < b ? b : a] = a < b ? a : b;
++    }
++}
++inline size_t num_vertices(const Graph& g)
++{
++    return g.parent.size();
++}
++inline int connected_components(Graph& g, int* out)
++{
++    std::map<int, int> ids;
++    for (int v = 0; v < int(g.parent.size()); v++) {
++        int r = find(g, v);
++        auto it = ids.find(r);
++        if (it == ids.end()) {
++            it = ids.emplace(r, int(ids.size())).first;
++        }
++        out[v] = it->second;
++    }
++    return int(ids.size());
++}
++}  // namespace koyk_graph
+ 
+ using MatrixIndexType = Eigen::FullPivHouseholderQR<Eigen::MatrixXd>::IntDiagSizeVectorType;
+ 
+@@ -455,7 +504,7 @@
+ #endif
+ 
+ 
+-using Graph = boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS>;
++using Graph = koyk_graph::Graph;
+ 
+ ///////////////////////////////////////
+ // Solver
+@@ -1751,7 +1800,7 @@
+     // partitioning into decoupled components
+     Graph g;
+     for (int i = 0; i < int(plist.size() + clistR.size()); i++) {
+-        boost::add_vertex(g);
++        koyk_graph::add_vertex(g);
+     }
+ 
+     int cvtid = int(plist.size());
+@@ -1760,16 +1809,16 @@
+         for (const auto param : cparams) {
+             MAP_pD_I::const_iterator it = pIndex.find(param);
+             if (it != pIndex.end()) {
+-                boost::add_edge(cvtid, it->second, g);
++                koyk_graph::add_edge(cvtid, it->second, g);
+             }
+         }
+         ++cvtid;
+     }
+ 
+-    VEC_I components(boost::num_vertices(g));
++    VEC_I components(koyk_graph::num_vertices(g));
+     int componentsSize = 0;
+     if (!components.empty()) {
+-        componentsSize = boost::connected_components(g, &components[0]);
++        componentsSize = koyk_graph::connected_components(g, &components[0]);
+     }
+ 
+     // identification of equality constraints and parameter reduction
+diff -ru a/planegcs/GCS.h b/planegcs/GCS.h
+--- a/planegcs/GCS.h	2026-11-01 17:27:50
++++ b/planegcs/GCS.h	2026-11-01 17:27:50
+@@ -25,7 +25,7 @@
+ 
+ #include <Eigen/QR>
+ 
+-#include "../../SketcherGlobal.h"
++#include "SketcherGlobal.h"
+ #include "SubSystem.h"
+ 
+ 
+diff -ru a/planegcs/Geo.cpp b/planegcs/Geo.cpp
+--- a/planegcs/Geo.cpp	2026-11-01 17:27:50
++++ b/planegcs/Geo.cpp	2026-11-01 17:36:05
+@@ -20,6 +20,10 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <cmath>  // KoykStudio: FreeCAD provides these through its precompiled header
++#include <map>
++#include <vector>
++
+ #define DEBUG_DERIVS 0
+ #if DEBUG_DERIVS
+ #endif
+diff -ru a/planegcs/Geo.h b/planegcs/Geo.h
+--- a/planegcs/Geo.h	2026-11-01 17:27:50
++++ b/planegcs/Geo.h	2026-11-01 17:27:50
+@@ -24,8 +24,7 @@
+ #define PLANEGCS_GEO_H
+ 
+ #include "Util.h"
+-#include <boost/math/constants/constants.hpp>
+-#include "../../SketcherGlobal.h"
++#include "SketcherGlobal.h"
+ 
+ #ifdef _MSC_VER
+ # pragma warning(disable : 4251)
+diff -ru a/planegcs/SubSystem.cpp b/planegcs/SubSystem.cpp
+--- a/planegcs/SubSystem.cpp	2026-11-01 17:27:50
++++ b/planegcs/SubSystem.cpp	2026-11-01 17:36:05
+@@ -20,6 +20,10 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <cmath>  // KoykStudio: FreeCAD provides these through its precompiled header
++#include <map>
++#include <vector>
++
+ #ifdef _MSC_VER
+ # pragma warning(disable : 4251)
+ #endif
+diff -ru a/planegcs/qp_eq.cpp b/planegcs/qp_eq.cpp
+--- a/planegcs/qp_eq.cpp	2026-11-01 17:27:50
++++ b/planegcs/qp_eq.cpp	2026-11-01 17:36:05
+@@ -20,6 +20,10 @@
+  *                                                                         *
+  ***************************************************************************/
+ 
++#include <cmath>  // KoykStudio: FreeCAD provides these through its precompiled header
++#include <map>
++#include <vector>
++
+ #ifdef _MSC_VER
+ # pragma warning(disable : 4244)
+ #endif
